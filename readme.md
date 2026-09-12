@@ -1,0 +1,1 @@
+discord bot, idk python. very in dev
