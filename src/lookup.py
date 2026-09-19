@@ -81,13 +81,19 @@ async def on_message(message):
       await message.channel.send(output)
     else:
       await message.channel.send("error 2")
-    
-    
-@tree.command(name="test", guild=discord.Object(id=GUILD))
-
-@app_commands.describe(user_input="")
-async def first_command(interaction: discord.Interaction, user_input: str):
-  output = lookup(user_input, False)
-  await interaction.response.send_message(output or "error 3")
       
+# SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS 
+
+@client.event
+async def on_ready():
+    guild = discord.Object(id=GUILD)
+    synced = await tree.sync(guild=guild)
+    print(f"Synced {len(synced)} command(s) to guild {GUILD}. Logged in as {client.user}")
+        
+@tree.command(name="wiki", description="Look up a wiki article", guild=discord.Object(id=GUILD))
+@app_commands.describe(article="The name of the article to look up")
+async def first_command(interaction: discord.Interaction, article: str):
+    output = lookup(article, False)
+    await interaction.response.send_message(output or "error 3")
+
 client.run(TOKEN)
