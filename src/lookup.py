@@ -56,13 +56,15 @@ async def on_message(message):
     await message.channel.send(f"<{wiki_url}>")  # if message is !wiki send the url
     return
 
-  WIKI_PATTERN = re.compile(r'\[\[(.*?)\]\]')
-  TEMPLATE_WIKI_PATTERN = re.compile(r'\{\{(.*?)\}\}')
+  PATTERN = re.compile(r'\[\[(.*?)\]\]|\{\{(.*?)\}\}')
   
-  page_matches = [(term, False) for term in WIKI_PATTERN.findall(message.content)] # all queries matching regex WIKI_PATTERN
-  template_matches = [(term, True) for term in TEMPLATE_WIKI_PATTERN.findall(message.content)] # all queries matching regex TEMPLATE_WIKI_PATTERN
-  search_queries = (page_matches + template_matches)
-  
+  search_queries = []
+  for match in PATTERN.finditer(message.content):
+    if match.group(1) is not None:
+      search_queries.append((match.group(1), False))  # [[...]] match
+    else:
+      search_queries.append((match.group(2), True))   # {{...}} match
+
   print(search_queries)
   
   if not search_queries:
