@@ -87,6 +87,14 @@ async def on_ready():
     guild = discord.Object(id=GUILD)
     synced = await tree.sync(guild=guild)
     print(f"Synced {len(synced)} command(s) to guild {GUILD}. Logged in as {client.user}")
+
+    await client.change_presence(
+        status=discord.Status.idle,
+        activity=discord.Activity(
+            type=discord.ActivityType.competing,
+            name="a pillow fight"
+        )
+    )
         
 @tree.command(name="wiki", description="Look up a wiki article", guild=discord.Object(id=GUILD))
 @app_commands.describe(article="The name of the article to look up")
