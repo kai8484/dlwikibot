@@ -7,7 +7,7 @@ SERVICE=dlwikibot
 sudo apt-get update -y
 sudo apt-get install -y git python3 python3-venv
 
-if ! swapon --show | grep -q /swapfile; then
+if ! sudo swapon --show | grep -q /swapfile; then
   sudo fallocate -l 1G /swapfile
   sudo chmod 600 /swapfile
   sudo mkswap /swapfile
