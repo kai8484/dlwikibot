@@ -18,6 +18,8 @@ if not GUILD:raise ValueError("Missing GUILD_ID. Ensure it is defined in your .e
 base_url = "https://deadlock.wiki/rest.php/v1/search/title"
 wiki_url = "https://deadlock.wiki/"
 headers = {"User-Agent": AGENT}
+WIKI_BOT_KEY = os.getenv("WIKI_BOT_KEY")
+if WIKI_BOT_KEY: headers["X-Bot-Key"] = WIKI_BOT_KEY  # lets the wiki's Cloudflare rule recognise this bot
 number_of_results = 1
 intents = discord.Intents.default()
 intents.message_content = True
