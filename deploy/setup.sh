@@ -53,11 +53,31 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now $SERVICE
 
-mkdir -p ~/.ssh && chmod 700 ~/.ssh
-if [ ! -f ~/.ssh/github_deploy ]; then
-  ssh-keygen -t ed25519 -N "" -C "github-actions-deploy" -f ~/.ssh/github_deploy >/dev/null
-  cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
-  chmod 600 ~/.ssh/authorized_keys
-fi
+sudo tee /etc/systemd/system/$SERVICE-update.service >/dev/null <<UNIT
+[Unit]
+Description=Pull dlwikibot from GitHub and restart it if main changed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=$USER
+ExecStart=$APP_DIR/deploy/update.sh
+UNIT
+
+sudo tee /etc/systemd/system/$SERVICE-update.timer >/dev/null <<UNIT
+[Unit]
+Description=Check GitHub for dlwikibot updates every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now $SERVICE-update.timer
 
 echo "SETUP_OK user=$USER"
