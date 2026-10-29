@@ -2,10 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands 
 import re
-import string
 import json
 import requests
-from urllib.parse import quote_plus
 import os
 from dotenv import load_dotenv 
 load_dotenv()
@@ -18,7 +16,6 @@ GUILD = int(os.environ["GUILD_ID"])
 if not GUILD:raise ValueError("Missing GUILD_ID. Ensure it is defined in your .env file.")
 
 base_url = "https://deadlock.wiki/rest.php/v1/search/title"
-api_url = "https://deadlock.wiki/api.php"
 wiki_url = "https://deadlock.wiki/"
 headers = {"User-Agent": AGENT}
 WIKI_BOT_KEY = os.getenv("WIKI_BOT_KEY")
@@ -30,62 +27,25 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
-def exact_title(query):
-  # plain title lookup (follows redirects). doesnt use the search backend, so it works when search is broken
-  # also tries Title Case so "rusted barrel" finds "Rusted Barrel"
-  candidates = list(dict.fromkeys([query, string.capwords(query)]))
-  try:
-    response = requests.get(api_url, headers=headers, timeout=10, params={"action": "query", "titles": "|".join(candidates), "redirects": 1, "format": "json", "formatversion": 2})
-    response.raise_for_status()
-    data = response.json()["query"]
-  except (requests.RequestException, ValueError, KeyError):
-    return None
-  # map what we asked for to the final title (normalized -> redirected)
-  renames = {r["from"]: r["to"] for r in data.get("normalized", []) + data.get("redirects", [])}
-  found = {p["title"] for p in data.get("pages", []) if not p.get("missing") and not p.get("invalid")}
-  for title in candidates:
-    for _ in range(3):  # normalized -> redirect, capped so a bad response cant loop forever
-      if title in found or title not in renames:
-        break
-      title = renames[title]
-    if title in found:
-      return title.replace(" ", "_")
-  return None
-
-def search_titles(query):
-  # returns (list of page keys, failed). failed=True means the wiki errored, not that nothing matched
-  try:
-    response = requests.get(base_url, headers=headers, timeout=10, params={"q": query, "limit": number_of_results})
-    response.raise_for_status()
-    pages = response.json().get("pages") or []
-  except (requests.RequestException, ValueError) as e:
-    print(f"search failed for {query!r}: {e}")
-    return [], True
-  return [page["key"] for page in pages], False
-
 def lookup(user_queries, no_embed):
   replies = []
-
+  
   for query in user_queries[:5]:
-    exact = exact_title(query)
-    if exact:
-      keys, failed = [exact], False
-    else:
-      keys, failed = search_titles(query)
-
-    if keys:
-      for key in keys:
+    response = requests.get(base_url, headers=headers, params={"q": query, "limit": number_of_results})
+    data = response.json()
+    
+    if data.get("pages"):
+      for page in data["pages"]:
         if no_embed:
-          result = f"<{wiki_url}{key}>"
+          result = f"<{wiki_url}{page['key']}>"
         else:
-          result = f"{wiki_url}{key}"
+          result = f"{wiki_url}{page['key']}"
         replies.append(result)
-    elif failed:
-      replies.append(f"wiki search is having issues, try: <{wiki_url}Special:Search?search={quote_plus(query)}>")
     else:
       redlink = f"{wiki_url}{query.replace(' ', '_')}?action=edit&redlink=1"
       replies.append(f"page doesnt exist: <{redlink}>")
-  return "\n".join(replies)
+    output = "\n".join(replies)
+  return output
 
 # NORMAL COMMANDS # NORMAL COMMANDS # NORMAL COMMANDS # NORMAL COMMANDS # NORMAL COMMANDS
 
@@ -97,8 +57,6 @@ async def on_message(message):
   if message.content.strip() == "!wiki":
     await message.channel.send(f"<{wiki_url}>")  # if message is !wiki send the url
     return
-  
-  
 
   PATTERN = re.compile(r'\[\[(.*?)\]\]|\{\{(.*?)\}\}')
   
@@ -121,10 +79,7 @@ async def on_message(message):
     prefix = ("Template:" if is_template and not clean_query.lower().startswith("template:")else "")  
 
     api_query.append(f"{prefix}{clean_query}")
-
-  if not api_query:
-    return
-
+    
   await message.channel.send(lookup(api_query, 1))
 
 # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS # SLASH COMMANDS 
