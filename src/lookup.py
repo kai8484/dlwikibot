@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands 
 import re
 import json
+from urllib.parse import quote, unquote
 import requests
 import os
 from dotenv import load_dotenv 
@@ -16,6 +17,7 @@ GUILD = int(os.environ["GUILD_ID"])
 if not GUILD:raise ValueError("Missing GUILD_ID. Ensure it is defined in your .env file.")
 
 base_url = "https://deadlock.wiki/rest.php/v1/search/title"
+api_url = "https://deadlock.wiki/api.php"
 wiki_url = "https://deadlock.wiki/"
 headers = {"User-Agent": AGENT}
 WIKI_BOT_KEY = os.getenv("WIKI_BOT_KEY")
@@ -27,22 +29,46 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 
+def split_fragment(query):
+  # "Page#Section" -> ("Page", "#Section"), since title search ignores the fragment
+  page, sep, fragment = query.partition("#")
+  page = page.strip()
+  if not page or not fragment.strip():
+    return page or query, ""
+  return page, f"#{quote(fragment.strip().replace(' ', '_'), safe='_-.')}"
+
+
+def resolve_section(page_key, fragment):
+  # anchors come from the page's real headings, so duplicate headings get a _2 suffix
+  want = unquote(fragment.lstrip("#")).replace("_", " ").strip().casefold()
+  response = requests.get(api_url, headers=headers, params={
+    "action": "parse", "page": page_key, "prop": "tocdata", "format": "json", "formatversion": "2",
+  })
+  sections = response.json().get("parse", {}).get("tocdata", {}).get("sections", [])
+  for section in sections:
+    if section.get("line", "").strip().casefold() == want:
+      return f"#{section['anchor']}"
+  return ""  # no such heading: link the page rather than a dead anchor
+
+
 def lookup(user_queries, no_embed):
   replies = []
   
   for query in user_queries[:5]:
-    response = requests.get(base_url, headers=headers, params={"q": query, "limit": number_of_results})
+    page_query, fragment = split_fragment(query)
+    response = requests.get(base_url, headers=headers, params={"q": page_query, "limit": number_of_results})
     data = response.json()
     
     if data.get("pages"):
       for page in data["pages"]:
+        anchor = resolve_section(page["key"], fragment) if fragment else ""
         if no_embed:
-          result = f"<{wiki_url}{page['key']}>"
+          result = f"<{wiki_url}{page['key']}{anchor}>"
         else:
-          result = f"{wiki_url}{page['key']}"
+          result = f"{wiki_url}{page['key']}{anchor}"
         replies.append(result)
     else:
-      redlink = f"{wiki_url}{query.replace(' ', '_')}?action=edit&redlink=1"
+      redlink = f"{wiki_url}{page_query.replace(' ', '_')}?action=edit&redlink=1"
       replies.append(f"page doesnt exist: <{redlink}>")
     output = "\n".join(replies)
   return output
