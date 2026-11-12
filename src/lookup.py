@@ -1,6 +1,5 @@
 import discord
 from discord import app_commands
-from discord.ext import commands 
 import re
 import json
 from urllib.parse import quote, unquote
@@ -16,7 +15,7 @@ if not TOKEN: raise ValueError("Missing DISCORD_BOT_TOKEN. Ensure it is defined 
 GUILD = int(os.environ["GUILD_ID"])
 if not GUILD:raise ValueError("Missing GUILD_ID. Ensure it is defined in your .env file.")
 
-base_url = "https://deadlock.wiki/rest.php/v1/search/title"
+base_url = "https://deadlock.wiki/api.php"  # rest.php search API was removed from the wiki
 api_url = "https://deadlock.wiki/api.php"
 wiki_url = "https://deadlock.wiki/"
 headers = {"User-Agent": AGENT}
@@ -51,22 +50,39 @@ def resolve_section(page_key, fragment):
   return ""  # no such heading: link the page rather than a dead anchor
 
 
+def find_page(query):
+  # exact title first (redirects included), so [[Gun]] lands on Weapon Damage
+  response = requests.get(base_url, headers=headers, params={
+    "action": "query", "titles": query, "redirects": 1, "format": "json", "formatversion": "2",
+  })
+  pages = response.json().get("query", {}).get("pages", [])
+  if pages and not pages[0].get("missing") and not pages[0].get("invalid"):
+    return pages[0]["title"]
+
+  # fall back to search for typos / near matches
+  response = requests.get(base_url, headers=headers, params={
+    "action": "query", "list": "search", "srsearch": query,
+    "srlimit": number_of_results, "format": "json", "formatversion": "2",
+  })
+  pages = response.json().get("query", {}).get("search", [])
+  return pages[0]["title"] if pages else None
+
+
 def lookup(user_queries, no_embed):
   replies = []
   
   for query in user_queries[:5]:
     page_query, fragment = split_fragment(query)
-    response = requests.get(base_url, headers=headers, params={"q": page_query, "limit": number_of_results})
-    data = response.json()
+    page_title = find_page(page_query)
     
-    if data.get("pages"):
-      for page in data["pages"]:
-        anchor = resolve_section(page["key"], fragment) if fragment else ""
-        if no_embed:
-          result = f"<{wiki_url}{page['key']}{anchor}>"
-        else:
-          result = f"{wiki_url}{page['key']}{anchor}"
-        replies.append(result)
+    if page_title:
+      title = quote(page_title.replace(" ", "_"), safe="/:")
+      anchor = resolve_section(page_title, fragment) if fragment else ""
+      if no_embed:
+        result = f"<{wiki_url}{title}{anchor}>"
+      else:
+        result = f"{wiki_url}{title}{anchor}"
+      replies.append(result)
     else:
       redlink = f"{wiki_url}{page_query.replace(' ', '_')}?action=edit&redlink=1"
       replies.append(f"page doesnt exist: <{redlink}>")
@@ -129,10 +145,5 @@ async def on_ready():
 async def first_command(interaction: discord.Interaction, article: str):
     output = lookup([article], False)
     await interaction.response.send_message(output or "error 3")
-    
-bot = commands.Bot(command_prefix="!", intents=intents)
-@bot.command(name="wiki")
-async def input_cmd(ctx):
-    await ctx.reply(f"{wiki_url}")
-  
+
 client.run(TOKEN)
